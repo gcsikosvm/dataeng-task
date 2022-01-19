@@ -58,7 +58,21 @@ class DateToStringDoFn(beam.DoFn):
 class ToStringFormatDoFn(beam.DoFn):
     """"""
     def process(self, element):
-        yield ', '.join([element[0], str(*element[1])])
+        yield ', '.join([element[0], str(element[1])])
+
+
+class Task2Transform(beam.PTransform):
+  def expand(self, pcoll):
+    return (
+        pcoll
+           | 'Filter Input Required' >> beam.ParDo(StandardiseRowsDoFn())
+           | 'Filter Transactions < 20' >> beam.ParDo(FilterTransactionLT20DoFn())
+           | 'Filter Year < 2010' >> beam.Filter(
+                lambda x: x[0] >= datetime.datetime.strptime('2010', '%Y').date())
+           | 'Date to str' >> beam.ParDo(DateToStringDoFn())
+           | 'SUM per Date' >> beam.CombinePerKey(sum)
+           | 'Transform to Output to string' >> beam.ParDo(ToStringFormatDoFn())
+            )
 
 
 def parse_file(element):
@@ -93,14 +107,9 @@ def run(argv=None, save_main_session=True):
                 | 'Read input file' >> beam.io.ReadFromText(known_args.input)
                 | 'Parse file' >> beam.Map(parse_file)
         )
-        filtered_input = parsed_csv | 'Filter Input Required' >> beam.ParDo(StandardiseRowsDoFn())
-        not_lt_20 = filtered_input | 'Filter Transactions < 20' >> beam.ParDo(FilterTransactionLT20DoFn())
-        not_before_2010 = not_lt_20 | 'Filter Year < 2010' >> beam.Filter(
-            lambda x: x[0] > datetime.datetime.strptime('2010', '%Y').date())
-        final_transform = not_before_2010 | 'Date to str' >> beam.ParDo(DateToStringDoFn())
-        final_transform = final_transform | 'SUM per Date' >> beam.GroupByKey(sum)
-        final_transform = final_transform | 'Transform to Output to string' >> beam.ParDo(ToStringFormatDoFn())
-        final_transform | 'Write to gzipped file with header' >> beam.io.WriteToText(known_args.output, file_name_suffix='jsonl.gz',
+
+        output = parsed_csv.apply(Task2Transform())
+        output | 'Write to gzipped file with header' >> beam.io.WriteToText(known_args.output, file_name_suffix='jsonl.gz',
                                                    header='date, total_amount',
                                                    compression_type=beam.io.filesystem.CompressionTypes.GZIP)
 
