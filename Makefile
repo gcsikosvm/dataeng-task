@@ -5,6 +5,8 @@ PIP = $(VENV)/bin/pip
 run: $(VENV)/bin/activate
 	$(PYTHON) task.py
 
+test: $(VENV)/bin/activate
+	$(PYTHON) -m unittest task_test.py
 
 $(VENV)/bin/activate: requirements.txt
 	python3 -m venv $(VENV)
